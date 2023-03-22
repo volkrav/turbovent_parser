@@ -1,9 +1,10 @@
-import logging
 import csv
-import lxml
+import json
+import logging
 import re
-from urllib.parse import urlparse
 import sys
+from urllib.parse import urlparse
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,56 +17,75 @@ domen = urlparse(url)
 domen = domen.scheme + '://' + domen.netloc
 
 
-def get_all_categories(soup: BeautifulSoup, all_category_dict, text):
+def make_soup(url: str, headers: str) -> BeautifulSoup:
+    return BeautifulSoup(requests.get(url=url, headers=headers).text, 'lxml')
+
+
+def make_all_categories_dict(soup: BeautifulSoup, all_categories_dict: dict, text: str) -> None:
     categories_list = soup.find_all(class_='b-product-groups-gallery__title')
     if not len(categories_list):
         return
     for category in categories_list:
-        category_title = text + '/' + category.text
+        category_title = text + '/' + category.text if text != '' else category.text
+        nesting_level = len(category_title.split('/'))
         category_url = domen + category.get('href')
-        print(category_title,
-                category.get('href'))
-        with open('all_category.csv', 'a', newline='') as csvfile:
-            writer = csv.writer(
-                csvfile, dialect='excel', quoting=csv.QUOTE_NONNUMERIC)
-            writer.writerow((category_title, category_url))
+        # print(category_title,
+        #       category.get('href'))
+        category_data_tuple = (category_title, category_url)
+        # # print(cat)
+        all_categories_dict.setdefault(nesting_level, [])
+        all_categories_dict[nesting_level].append(category_data_tuple)
+        # print(all_category_dict)
+        # with open('data/all_category.csv', 'a', newline='') as csvfile:
+        #     writer = csv.writer(
+        #         csvfile, dialect='excel', quoting=csv.QUOTE_NONNUMERIC)
+        #     writer.writerow((category_title, category_url))
 
-        get_all_categories(BeautifulSoup(requests.get(
-            category_url, headers=headers).text, 'lxml'), all_category_dict, category_title)
-
-    # {category.text: category.get('href')
-    #                      for category in soup.find_all(
-    #     class_='b-product-groups-gallery__title')}
+        make_all_categories_dict(make_soup(
+            category_url, headers=headers), all_categories_dict, category_title)
 
 
 def main():
     logging.basicConfig(
-        level = logging.INFO,
-        datefmt = '%d-%m-%y %H:%M:%S',
-        format = u'%(asctime)s - [%(levelname)s] - (%(name)s).%(funcName)s:%(lineno)d - %(message)s',
-        # filename='regbot.log'
+        level=logging.INFO,
+        datefmt='%d-%m-%y %H:%M:%S',
+        format=u'%(asctime)s - [%(levelname)s] - (%(name)s).%(funcName)s:%(lineno)d - %(message)s',
+        # filename='turbovent_parser.log'
     )
-    # try:
-    #     response = requests.get(url=url, headers=headers)
-    #     logger.info(response.status_code)
-    # except requests.exceptions.ConnectionError as err:
-    #     logger.error(f'parser get ConnectionError, url={url}')
-    #     sys.exit(1)
+    #!
+    try:
+        response = requests.get(url=url, headers=headers)
+        logger.info(f'parser get response (code={response.status_code}) from {url}')
+    except requests.exceptions.ConnectionError as err:
+        logger.error(f'parser get ConnectionError, url={url}')
+        sys.exit(1)
 
     # with open('turbovent.html', 'w') as file:
     #     file.write(response.text)
 
-    text='/'
-    all_category_dict={}
+    # with open('turbovent.html', 'r') as file:
+    #     src = file.read()
 
-    with open('turbovent.html', 'r') as file:
-        src=file.read()
-    soup=BeautifulSoup(src, 'lxml')
-    with open('all_category.csv', 'w', newline = '') as csvfile:
-        writer=csv.writer(csvfile, dialect='excel', quoting=csv.QUOTE_NONNUMERIC)
-        writer.writerow(('category_title', 'category_url'))
+    soup = BeautifulSoup(response.text, 'lxml')
+    all_categories_dict = {}
 
-    get_all_categories(soup, all_category_dict, '')
+    # with open('all_category.csv', 'w', newline = '') as csvfile:
+    #     writer=csv.writer(csvfile, dialect='excel', quoting=csv.QUOTE_NONNUMERIC)
+    #     writer.writerow(('category_title', 'category_url'))
+
+    make_all_categories_dict(soup, all_categories_dict, '')
+
+    # with open('data/all_categories.json', 'w', encoding='utf-8') as jsonfile:
+    #     json.dump(all_category_dict, jsonfile, indent=4, ensure_ascii=False)
+
+    # with open('data/all_categories.json', 'r', encoding='utf-8') as file:
+    #     all_categories_dict = json.load(file)
+
+    # print(all_categories_dict)
+    # for key in range(len(all_categories_dict.keys()), 0, -1):
+    #     # type_key = type(all_categories_dict.keys()[0])
+    #     for link in all_categories_dict[key]:
+    #         print(link[1])
 
 #     products_in_main_page = soup.find_all(
 #         'li', class_='b-product-gallery__item')
@@ -95,4 +115,7 @@ def main():
 
 
 if __name__ == '__main__':
+    start = time.time() ## точка отсчета времени
     main()
+    end = time.time() - start ## собственно время работы программы
+    print(end) ## вывод времени
