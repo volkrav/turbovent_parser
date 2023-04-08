@@ -5,3 +5,8 @@
 __pycache_
 *.html
 *.json
+*.bak
+*.txt
+*.csv
+*.xls
+*.xlsx

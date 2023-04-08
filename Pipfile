@@ -8,6 +8,12 @@ beautifulsoup4 = "*"
 requests = "*"
 lxml = "*"
 aiohttp = "*"
+fake-useragent = "*"
+aiosqlite = "*"
+pytz = "*"
+aiofiles = "*"
+openpyxl = "*"
+numpy = "*"
 
 [dev-packages]
 autopep8 = "*"
