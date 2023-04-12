@@ -14,6 +14,7 @@ pytz = "*"
 aiofiles = "*"
 openpyxl = "*"
 numpy = "*"
+pandas = "*"
 
 [dev-packages]
 autopep8 = "*"

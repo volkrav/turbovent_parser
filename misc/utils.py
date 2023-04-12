@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Generator
+from typing import Dict, Generator
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 import openpyxl
@@ -11,6 +11,8 @@ import sys
 import aiofiles
 import asyncio
 import aiosqlite
+import random
+import pandas as pd
 
 import aiohttp
 import async_timeout
@@ -29,31 +31,32 @@ ua = UserAgent()
 # async def is_parse_categories(argv: list) -> bool:
 #     if len(argv) > 1:
 #         return argv[1] == 'parsecat'
+with open('misc/workingproxies.txt', 'r') as file:
+    print('\t worked open file')
+    proxies_list = file.read().split()
 
 
 async def fetch(session: aiohttp.ClientSession, url: str) -> None:
     headers = settings.headers
     headers['user-agent'] = ua.random
-    proxies = [
-        'http://5.75.143.44:8080',
-        'http://5.75.160.177:8080',
-        'http://116.203.206.103:8080',
-        'http://159.69.189.199:8080',
-        'http://167.235.232.224:8080',
-        'http://18.102.95.107:3128',
-        'http://5.75.159.173:8080',
-        'http://91.107.239.124:8080',
-    ]
-
-    # proxy = 'http://5.75.159.173:8080'
-    for proxy in proxies:
+    # random.shuffle(proxies_list)
+    for proxy in proxies_list:
+        print(f'used {proxy} for {url}')
+        try:
+            proxies_list.append(proxies_list.pop(proxies_list.index(proxy)))
+        except ValueError:
+            logger.warning(f'{proxy} was moved earlier')
+            continue
         try:
             async with async_timeout.timeout(settings.FETCH_TIMEOUT):
                 async with session.get(url, headers=headers, proxy=proxy) as response:
                     if response.status == 200:
+                        # print('get 200')
+                        # sys.exit(1)
                         return await response.text()
                     elif response.status == 429:
-                        logger.warning(f'{url} get Too Many Requests, retrying in {settings.SLEEP_TIME}s')
+                        logger.warning(
+                            f'{url} get Too Many Requests, retrying in {settings.SLEEP_TIME}s')
                         await asyncio.sleep(settings.SLEEP_TIME)
                     else:
                         raise aiohttp.ClientResponseError(
@@ -64,13 +67,40 @@ async def fetch(session: aiohttp.ClientSession, url: str) -> None:
                             headers=response.headers
                         )
         except aiohttp.ClientHttpProxyError as err:
-            logger.warning(f'{url} request failed with proxy {proxy}, will try another one')
+            logger.warning(
+                f'{url} request failed with proxy {proxy} : {err}, will try another one')
+            if proxies_list and proxy in proxies_list:
+                proxies_list.remove(proxy)
             continue
+        except aiohttp.ClientResponseError as err:
+            logger.warning(
+                f'{url} request failed with proxy {proxy} : {err}, will try another one')
+            if proxies_list and proxy in proxies_list:
+                proxies_list.remove(proxy)
+            continue
+        except aiohttp.ServerDisconnectedError as err:
+            logger.warning(
+                f'{url} request failed with proxy {proxy} : {err}, will try another one')
+            if proxies_list and proxy in proxies_list:
+                proxies_list.remove(proxy)
+            continue
+        except OSError as err:
+            logger.warning(
+                f'{url} request failed with proxy {proxy} : {err}, will try another one')
+            # if proxies_list and proxy in proxies_list: proxies_list.remove(proxy)
+            continue
+
         except Exception as err:
-            logger.error(f'{url} request failed with proxy {proxy}: {err}', exc_info=True)
+            logger.error(
+                f'{url} request failed with proxy {proxy} : {err}', exc_info=True)
             sys.exit(1)
     logger.error(f'{url} request failed with all proxy servers')
     sys.exit(1)
+
+
+async def _get_current_date() -> str:
+    tz = pytz.timezone('Europe/Kiev')
+    return datetime.datetime.now(tz).strftime('%Y-%m-%d')
 
 
 async def write_to_csv(data: dict) -> None:
@@ -144,11 +174,6 @@ async def read_excel_file(file_path) -> Generator:
 #     print(row)
 
 
-async def _get_current_date() -> str:
-    tz = pytz.timezone('Europe/Kiev')
-    return datetime.datetime.now(tz).strftime('%Y-%m-%d')
-
-
 async def make_csv_from_db_suppliers(db: aiosqlite.Connection):
     async with aiosqlite.connect('parser.db') as db:
         db.row_factory = aiosqlite.Row
@@ -178,11 +203,26 @@ async def make_csv_from_db_suppliers(db: aiosqlite.Connection):
                 # count += 1
 
 
+async def process_excel(filename: str) -> Dict:
+    # список заголовков, которые нужно обработать
+    columns_to_include = ['Column1', 'Column2', 'Column5']
+    # чтение данных из файла excel
+    df = pd.read_excel(filename)
+
+    # создание списка словарей с нужными данными
+    for _, row in df.iterrows():
+        entry = {}
+        for column in columns_to_include:
+            entry[column] = row[column]
+        yield entry
+
+
 async def main():
     # async with aiosqlite.connect('parser.db') as db:
-        # await make_csv_from_db_suppliers(db)
+    # await make_csv_from_db_suppliers(db)
     today = await _get_current_date()
-    path = f'/Users/volodymyr/Downloads/da99f56c3add563b564de15dd3bf9f70.xlsx'
+    # path = f'/Users/volodymyr/Downloads/da99f56c3add563b564de15dd3bf9f70.xlsx'
+    path = f'/Users/volodymyr/Projects/turbovent_parser/inbox/67dd3a5b92c24f5aabdfcdc5bb327465.xlsx'
     row_gen = await read_excel_file(path)
     async for row in row_gen():
         product = {row['Артикул']}

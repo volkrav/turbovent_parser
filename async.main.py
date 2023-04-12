@@ -6,6 +6,7 @@ import time
 import aiofiles
 
 import aiohttp
+from misc.xlstodb import xls_into_electrokom
 
 import settings
 from data.db_api import db_create_tables
@@ -24,6 +25,9 @@ async def main():
     )
     await db_create_tables()
 
+    # with open('misc/http.txt', 'r') as file:
+    #     proxies_list = file.read().split()
+
     async with aiohttp.ClientSession(headers=settings.headers) as session:
         match sys.argv:
             case _, 'parsecat' as command:
@@ -34,14 +38,17 @@ async def main():
                 )
                 async with aiofiles.open('data/all_categories.json', 'w', encoding='utf-8') as file:
                     json_data = json.dumps(all_category_dict,
-                                        indent=4, ensure_ascii=False)
+                                           indent=4, ensure_ascii=False)
                     await file.write(json_data)
+            case _, 'insert_into_electrokom', path:
+                await xls_into_electrokom(path)
             case _:
                 async with aiofiles.open('data/all_categories.json', 'r') as file:
                     json_contents = await file.read()
                     all_category_dict = json.loads(json_contents)
 
-        # all_products_data_dict = await make_all_products_data_dict(all_category_dict, session)
+                await make_all_products_data_dict(all_category_dict,
+                                                  session)
 
         # with open('data/all_products.json', 'w', encoding='utf-8') as file:
         #     json.dump(all_products_data_dict, file,

@@ -5,14 +5,20 @@ url = 'https://turbovent.com.ua/ua/product_list'
 _domen = urlparse(url)
 domen = _domen.scheme + '://' + _domen.netloc
 
-FETCH_TIMEOUT = 20
-SLEEP_TIME = 5
+FETCH_TIMEOUT = 10
+SLEEP_TIME = 1
 
 prom_available_dict = {
     'В наявності': 1,
     'Під замовлення': 0,
     'На складі': 1,
     'Немає в наявності': 0
+}
+electrokom_available_dict = {
+    'В наявності': 1,
+    'Немає в наявності': 0,
+    'Очікується': 0,
+    'Статус не выбран': 0
 }
 
 headers = {
