@@ -3,7 +3,7 @@ import logging
 import re
 import json
 import sys
-from typing import Mapping
+from typing import List, Mapping
 
 import aiohttp
 import aiosqlite
@@ -12,9 +12,10 @@ from bs4 import BeautifulSoup, element
 import settings
 from data.db_api import (db_add_product_into_suppliers,
                          select_one_where_and,
-                         select_many_where_and)
+                         select_many_where_and,
+                         update)
 from misc.classes import Product
-from misc.utils import fetch
+from misc.utils import fetch, write_to_excel
 from misc.checkers import is_changes
 
 logger = logging.getLogger(__name__)
@@ -26,53 +27,65 @@ async def make_all_products_data_dict(all_category_dict: dict, session: aiohttp.
     return all_products_data_dict
 
 
-async def single_product_processing(product: Product, db: aiosqlite.Connection):
-    product_from_db_suppliers = await get_product_from_db_suppliers(product, db)
+async def single_product_processing(product_from_site: Product, db: aiosqlite.Connection):
+    product_from_db_suppliers = await get_product_from_db_suppliers(product_from_site, db)
     if product_from_db_suppliers is None:
         #! появился новый товар
-        await db_add_product_into_suppliers(product, db)
+        await db_add_product_into_suppliers(product_from_site, db)
         #! создать/дописать в файл new_today.xlsx
         #! оповещение
     else:
-        if await is_changes(product, product_from_db_suppliers):
+        if await is_changes(product_from_site, product_from_db_suppliers):
+            #! изменился товар
+            #! создать/дописать в файл change_today.xlsx
             print('is_changes')
-            product_from_db_suppliers = await get_products_from_db_electrokom(product, db)
-            # sys.exit(1)
-            # TODO проверить есть ли этот товар в бд электроком
-            # TODO проверить легитимность изменение цены
-            # product_from_db_electrokom = await get_products_from_db_electrokom
-            # TODO если такой товар есть, то добавить его в csv-файл экспорта
-            # TODO обновить этот товар в бд поставщик
-
+            await update_product_in_db_suppliers(product_from_site, db)
+            #! оповещение
+    products_from_db_electrokom = await get_products_from_db_electrokom(product_from_site, db)
+    if products_from_db_electrokom:
+        product_from_db_electrokom: Product
+        for product_from_db_electrokom in products_from_db_electrokom:
+            if await is_changes(product_from_site, product_from_db_electrokom):
+                await update_product_in_db_electrokom(product_from_site, db)
+                await write_to_excel(
+                    {
+                        'Артикул': product_from_db_electrokom.sku,
+                        'Цена': product_from_site.price if product_from_site.price > 0
+                        else product_from_db_electrokom.price,
+                        'Наличие': 'В наличии' if product_from_site.available
+                        else 'Нет в наличии',
+                    }
+                )
+    #         print(product.title)
+    # sys.exit(1)
+    # TODO проверить есть ли этот товар в бд электроком
+    # TODO проверить легитимность изменение цены
+    # product_from_db_electrokom = await get_products_from_db_electrokom
+    # TODO если такой товар есть, то добавить его в csv-файл экспорта
+    # TODO обновить этот товар в бд поставщик
 
 
 async def worker(session, db, url, id_filter):
-                # url = 'https://turbovent.com.ua/ua/g9033599-osevye-promyshlennye-ventilyatory'
-                product: Product
-                # with open('soup.html', 'w') as file:
-                #     file.write(await fetch(session, url))
+    product: Product
+    # with open('soup.html', 'w') as file:
+    #     file.write(await fetch(session, url))
 
-                # with open('soup.html', 'r') as file:
-                #     html = file.read()
-                soup = BeautifulSoup(await fetch(session, url), 'lxml')
-                # soup = BeautifulSoup(html, 'lxml')
-                # # print('ok')
-                total_pages = await _get_number_pages(soup)
-                print(total_pages)
-                if total_pages == 0: print(url)
-                return
-                if not total_pages:
-                    logger.warning(
-                        f'{url} has no number_pages ({total_pages})')
-                # print(f'{url} -> {total_pages=}')
-                async for product in _get_all_products_on_page(soup, id_filter):
-                    await single_product_processing(product, db)
-                # for num_page in range(2, total_pages+1):
-                #     async for product in _get_all_products_on_page(
-                #             BeautifulSoup(await fetch(session, url+f'/page_{num_page}'), 'lxml'),
-                #             id_filter):
-                #         await single_product_processing(product, db)
-
+    # with open('soup.html', 'r') as file:
+    #     html = file.read()
+    soup = BeautifulSoup(await fetch(session, url), 'lxml')
+    # soup = BeautifulSoup(html, 'lxml')
+    # # print('ok')
+    total_pages = await _get_number_pages(soup)
+    if total_pages == 0:
+        logger.warning(
+            f'{url} has no number_pages ({total_pages})')
+    async for product in _get_all_products_on_page(soup, id_filter):
+        await single_product_processing(product, db)
+    for num_page in range(2, total_pages+1):
+        async for product in _get_all_products_on_page(
+                BeautifulSoup(await fetch(session, url+f'/page_{num_page}'), 'lxml'),
+                id_filter):
+            await single_product_processing(product, db)
 
 
 async def _make_all_products_data_dict(all_products_data_dict: dict,
@@ -81,36 +94,20 @@ async def _make_all_products_data_dict(all_products_data_dict: dict,
     id_filter = set()
     async with aiosqlite.connect('parser.db') as db:
         for key in range(len(all_category_dict), 0, -1):
-            tasks = [worker(session, db, url, id_filter) for url in all_category_dict[str(key)].values()]
-                # # url = 'https://turbovent.com.ua/ua/g9033599-osevye-promyshlennye-ventilyatory'
-                # product: Product
-                # # with open('soup.html', 'w') as file:
-                # #     file.write(await fetch(session, url))
+            tasks = [asyncio.ensure_future(worker(session, db, url, id_filter))
+                     for url in all_category_dict[str(key)].values()]
 
-                # # with open('soup.html', 'r') as file:
-                # #     html = file.read()
-                # soup = BeautifulSoup(await fetch(session, url), 'lxml')
-                # # soup = BeautifulSoup(html, 'lxml')
-                # # # print('ok')
-                # total_pages = await _get_number_pages(soup)
-                # print(total_pages)
-                # continue
-                # if not total_pages:
-                #     logger.warning(
-                #         f'{url} has no number_pages ({total_pages})')
-                #     continue
-                # # print(f'{url} -> {total_pages=}')
-                # async for product in _get_all_products_on_page(soup, id_filter):
-                #     await single_product_processing(product, db)
-                # # for num_page in range(2, total_pages+1):
-                # #     async for product in _get_all_products_on_page(
-                # #             BeautifulSoup(await fetch(session, url+f'/page_{num_page}'), 'lxml'),
-                # #             id_filter):
-                # #         await single_product_processing(product, db)
-                #         # break
-                #     break
-                # break
+            #! for tests
+            # tasks = [asyncio.ensure_future(
+            #     worker(session,
+            #            db,
+            #            'https://turbovent.com.ua/ua/g7317438-osevye-promyshlennye-ventilyatory',
+            #            id_filter
+            #            )
+            # )]
+
             await asyncio.gather(*tasks)
+            # break
 
 
 async def _get_all_products_on_page(soup: BeautifulSoup, id_filter: set) -> Product:
@@ -140,7 +137,8 @@ async def _make_one_product_from_html(item: element.ResultSet, id_filter: set) -
     )
 
 
-async def get_product_from_db_suppliers(product: Product, db: aiosqlite.Connection):
+async def get_product_from_db_suppliers(product: Product,
+                                        db: aiosqlite.Connection) -> Product:
     product_from_db_suppliers = await select_one_where_and('suppliers',
                                                            '*',
                                                            {'id_website': product.id_website},
@@ -159,14 +157,60 @@ async def get_product_from_db_suppliers(product: Product, db: aiosqlite.Connecti
     )
 
 
-async def get_products_from_db_electrokom(product: Product, db: aiosqlite.Connection):
-    product_from_db_electrokom = await select_many_where_and(
+async def get_products_from_db_electrokom(product: Product,
+                                          db: aiosqlite.Connection) -> List[Product]:
+    products_from_db_electrokom = await select_many_where_and(
         'electrokom',
         '*',
-        {'mnp': product.id_website},
+        {'mnp': product.sku},
         db
     )
-    # print(product_from_db_electrokom)
+    if products_from_db_electrokom is None:
+        return None
+    products = []
+    for _product in products_from_db_electrokom:
+        products.append(
+            Product(
+                id_db=_product['id_db'],
+                sku=_product['sku'],
+                title=_product['title'],
+                url=_product['url'],
+                price=_product['price'],
+                available=_product['available'],
+                mnp=_product['mnp'],
+            )
+        )
+    return products
+
+
+async def update_product_in_db_suppliers(product: Product,
+                                         db: aiosqlite.Connection):
+    await update(
+        'suppliers',
+        {
+            'price': product.price,
+            'available': product.available
+        },
+        {
+            'id_website': product.id_website
+        },
+        db
+    )
+
+
+async def update_product_in_db_electrokom(product: Product,
+                                          db: aiosqlite.Connection):
+    await update(
+        'electrokom',
+        {
+            'price': product.price,
+            'available': product.available
+        },
+        {
+            'mnp': product.sku
+        },
+        db
+    )
 
 
 async def _get_number_pages(soup: BeautifulSoup) -> int:

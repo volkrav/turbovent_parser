@@ -32,16 +32,14 @@ ua = UserAgent()
 #     if len(argv) > 1:
 #         return argv[1] == 'parsecat'
 with open('misc/workingproxies.txt', 'r') as file:
-    print('\t worked open file')
     proxies_list = file.read().split()
+    random.shuffle(proxies_list)
 
 
 async def fetch(session: aiohttp.ClientSession, url: str) -> None:
     headers = settings.headers
     headers['user-agent'] = ua.random
-    # random.shuffle(proxies_list)
     for proxy in proxies_list:
-        print(f'used {proxy} for {url}')
         try:
             proxies_list.append(proxies_list.pop(proxies_list.index(proxy)))
         except ValueError:
@@ -127,7 +125,8 @@ async def write_to_csv(data: dict) -> None:
 async def write_to_excel(data: dict):
     # print(data)
     today = await _get_current_date()
-    path = f'outbox/change_{today}.xlsx'
+    path_to_desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+    path = f'{path_to_desktop}/change_{today}.xlsx'
     if os.path.exists(path):
         workbook = openpyxl.load_workbook(path)
         worksheet = workbook.active

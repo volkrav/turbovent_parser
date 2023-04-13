@@ -31,7 +31,7 @@ async def db_create_tables() -> None:
 async def db_add_product_into_suppliers(product: Product, db: aiosqlite.Connection) -> None:
     await _insert('suppliers',
                   {
-                      'id_website': product.id,
+                      'id_website': product.id_website,
                       'sku': product.sku,
                       'title': product.title,
                       'url': product.url,
@@ -103,13 +103,12 @@ async def select_many_where_and(tablename: str,
     )
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(sql, values) as cursor:
-            row = await cursor.fetchmany()
-            return row or None
+        async with db.execute_fetchall(sql, values) as rows:
+            return rows or None
     except Exception as err:
         logger.error(
             f'Error checking product in database: {err}', exc_info=True)
-        return False
+        return None
 
 
 async def _insert(tablename: str, column_values: Dict, db: aiosqlite.Connection):
@@ -130,6 +129,35 @@ async def _insert(tablename: str, column_values: Dict, db: aiosqlite.Connection)
         )
     except aiosqlite.IntegrityError:
         raise AlreadyBeenCreated
+    except Exception as err:
+        logger.error(
+            f'Error inserting into "{tablename}": {err}', exc_info=True)
+
+
+async def update(tablename: str,
+                  column_values: Dict,
+                  definitions: Mapping[str, str],
+                  db: aiosqlite.Connection):
+    '''
+    update electrokom set price=1, available=0 where mnp='SIGMA200'
+    'price': 1, 'available': 0,
+    'mnp': 'SIGMA200'
+    '''
+    set_ = ', '.join([f'{column}=?' for column in column_values.keys()])
+    definition_joined_placeholders = ' AND '.join(
+        [f'{field}=?' for field in definitions.keys()])
+    values = tuple(list(column_values.values()) + list(definitions.values()))
+    sql = (
+        f'UPDATE {tablename} '
+        f'SET {set_} '
+        f'WHERE {definition_joined_placeholders}'
+    )
+    try:
+        await db.execute(sql,values)
+        await db.commit()
+        logger.info(
+            f'update "{values[-1]}" into a "{tablename}"'
+        )
     except Exception as err:
         logger.error(
             f'Error inserting into "{tablename}": {err}', exc_info=True)

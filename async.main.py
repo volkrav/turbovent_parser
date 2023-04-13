@@ -6,7 +6,7 @@ import time
 import aiofiles
 
 import aiohttp
-from misc.xlstodb import xls_into_electrokom
+from misc.xlstodb import db_insert_electrokom_from_xls
 
 import settings
 from data.db_api import db_create_tables
@@ -41,7 +41,7 @@ async def main():
                                            indent=4, ensure_ascii=False)
                     await file.write(json_data)
             case _, 'insert_into_electrokom', path:
-                await xls_into_electrokom(path)
+                await db_insert_electrokom_from_xls(path)
             case _:
                 async with aiofiles.open('data/all_categories.json', 'r') as file:
                     json_contents = await file.read()
