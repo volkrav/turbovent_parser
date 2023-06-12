@@ -1,13 +1,11 @@
+import asyncio
+import logging
 from typing import Dict, Generator, NamedTuple
+
 import aiosqlite
 import pandas as pd
-import asyncio
-import pytz
-import datetime
-import logging
-from data.db_api import db_add_product_into_electrokom_from_excel
 
-from misc.classes import AlreadyBeenCreated
+from data.db_api import db_add_product_into_electrokom_from_excel
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +39,6 @@ async def process_excel(filename: str) -> Generator:
         yield entry
 
 
-
-
-
 async def db_insert_electrokom_from_xls(path):
     async with aiosqlite.connect('parser.db') as db:
         row_gen_pd = process_excel(path)
@@ -54,6 +49,6 @@ async def db_insert_electrokom_from_xls(path):
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     a1 = loop.create_task(db_insert_electrokom_from_xls(
-        '/Users/volodymyr/Projects/turbovent_parser/inbox/67dd3a5b92c24f5aabdfcdc5bb327465.xlsx'
+        '/Users/volodymyr/Projects/turbovent_parser/inbox/example_xls_to_db.xlsx'
     ))
     loop.run_until_complete(a1)

@@ -12,3 +12,5 @@ __pycache_
 *.xlsx
 *.db
 *.sh
+tests
+test.py

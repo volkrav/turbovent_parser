@@ -21,7 +21,7 @@ async def main():
         level=logging.INFO,
         datefmt='%d-%m-%y %H:%M:%S',
         format=u'%(asctime)s - [%(levelname)s] - (%(name)s).%(funcName)s:%(lineno)d - %(message)s',
-        # filename='turbovent_parser.log'
+        filename='turbovent_parser.log'
     )
     await db_create_tables()
 
