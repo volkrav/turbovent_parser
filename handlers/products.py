@@ -245,11 +245,11 @@ async def _get_product_title(item: element.ResultSet, id: str) -> str:
 
 async def _get_product_price(item: element.ResultSet, id: str) -> int:
     price_text = item.find('span', class_='b-goods-price__value')
-    regex = r"^[\s*\d*]+[\d+]+\s*грн\s*$"
+    regex = r"^[\s*\d*]+[\d+]+\s*₴\s*$"
     if price_text is None or re.match(regex, price_text.text) is None:
         logger.warning(f'{id} has no price')
         return 0
-    return int(price_text.text.replace('\xa0', '').replace('грн', ''))
+    return int(price_text.text.replace('\xa0', '').replace('₴', ''))
 
 
 async def _get_product_url(item: element.ResultSet, id: str) -> str:
